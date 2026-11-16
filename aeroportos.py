@@ -112,6 +112,31 @@ def hubs_entre(origem, destino, quantos=2):
     return escolhidos
 
 
+FATOR_ESTRADA = 1.3  # estrada costuma ser ~30% mais longa que a linha reta
+# Sem ligação por estrada com o resto (só barco ou avião): nunca é "vizinho".
+SEM_ESTRADA = {"MCP", "FEN", "TBT"}
+
+
+def vizinhos(codigo, raio_km=450, quantos=3):
+    """Aeroportos do mesmo país a até `raio_km` de estrada (estimada).
+
+    Devolve [(código, km de estrada)] do mais perto para o mais longe.
+    Ex.: CAC -> IGU ~157 km, MGF ~294 km, XAP ~328 km.
+    """
+    a = AEROPORTOS.get(codigo)
+    if not a or codigo in SEM_ESTRADA:
+        return []
+    perto = []
+    for cod, x in AEROPORTOS.items():
+        if cod == codigo or mesma_cidade(cod, codigo) or x[3] != a[3] or cod in SEM_ESTRADA:
+            continue
+        km = _dist(a, x) * FATOR_ESTRADA
+        if km <= raio_km:
+            perto.append((round(km), cod))
+    perto.sort()
+    return [(c, km) for km, c in perto[:quantos]]
+
+
 def alem_de(origem, destino, quantos=6):
     """Destinos que ficam depois de `destino`, vindo de `origem`.
 

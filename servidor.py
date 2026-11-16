@@ -43,9 +43,13 @@ def _gravar(arq, dados):
     tmp.replace(arq)
 
 
+LIMITES_CHAO = {"carro_km": (0.1, 10), "estacionamento_dia": (0, 500), "uber_km": (0.1, 20), "raio_km": (0, 1500)}
+
+
 def config():
     c = _ler(ARQ_CONFIG, {})
     c.setdefault("intervalo_horas", 6)
+    c["chao"] = {**jogadas.CHAO_PADRAO, **c.get("chao", {})}
     return c
 
 
@@ -56,6 +60,7 @@ def config_publica():
         "telegram_token_salvo": bool(c.get("telegram_token")),
         "telegram_conectado": bool(c.get("telegram_chat_id")),
         "intervalo_horas": c["intervalo_horas"],
+        "chao": c["chao"],
     }
 
 
@@ -93,7 +98,8 @@ def conferir_vigia(vid):
         v = next((x for x in vigias if x["id"] == vid), None)
     if not v:
         raise KeyError(vid)
-    r = jogadas.cacar(v["origem"], v["destino"], v["ida"], v.get("volta"), _pax(v.get("passageiros")))
+    r = jogadas.cacar(v["origem"], v["destino"], v["ida"], v.get("volta"), _pax(v.get("passageiros")),
+                      chao=config()["chao"])
     opcoes = r["opcoes"]
     if not opcoes:
         return v
@@ -167,7 +173,7 @@ def iniciar_cacada(origem, destino, ida, volta, pax):
 
     def rodar():
         try:
-            CACADAS[cid]["resultado"] = jogadas.cacar(origem, destino, ida, volta, pax, progresso)
+            CACADAS[cid]["resultado"] = jogadas.cacar(origem, destino, ida, volta, pax, progresso, config()["chao"])
         except gflights.Bloqueado as e:
             CACADAS[cid]["erro"] = str(e)
         except Exception as e:
@@ -301,6 +307,14 @@ class Rasante(BaseHTTPRequestHandler):
                         if not 1 <= h <= 48:
                             raise ValueError("O intervalo vai de 1 a 48 horas.")
                         c["intervalo_horas"] = h
+                    for chave, valor in (b.get("chao") or {}).items():
+                        if chave not in LIMITES_CHAO:
+                            continue
+                        lo, hi = LIMITES_CHAO[chave]
+                        v = float(valor)
+                        if not lo <= v <= hi:
+                            raise ValueError(f"Valor fora do esperado em {chave}: use entre {lo} e {hi}.")
+                        c["chao"][chave] = v
                     if b.get("telegram_token"):
                         c["telegram_token"] = b["telegram_token"].strip()
                         c.pop("telegram_chat_id", None)

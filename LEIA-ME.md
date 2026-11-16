@@ -26,7 +26,19 @@ A vigia só roda com o Rasante aberto neste computador.
 | Escala oculta | voo para uma cidade além do destino, com escala no destino, mais barato que o direto | alto |
 | Ida e volta jogando fora a volta | sem volta: quando ida e volta sai mais barato que só ida | médio |
 
+| Aeroporto vizinho | até 3 aeroportos a até 450 km de estrada da origem ou do destino; o preço soma carro (combustível, pedágio, estacionamento) ou Uber, o mais barato | baixo (médio se precisar de conexão montada) |
+
 Jogada arriscada que não sai mais barata que a compra normal não aparece.
+Aeroporto vizinho só aparece se, com a estrada, sair mais barato que a melhor
+opção do aeroporto pedido; senão o resumo diz quais vizinhos foram testados.
+Custos padrão (estimativas, editáveis na engrenagem): carro R$ 0,80/km,
+estacionamento R$ 40/dia, Uber/táxi R$ 2,30/km (até 4 pessoas por carro),
+estrada = linha reta × 1,3. Macapá, Noronha e Tabatinga nunca são vizinhos
+(sem estrada).
+
+O Google só monta conexão até alguns meses à frente (Foz → Belém aparece em
+dez/26 e mar/27, nada em jun/27, com os voos diretos à venda). Nesses casos o
+vizinho também ganha conexão montada.
 
 ## Pessoas
 
@@ -61,7 +73,8 @@ Todas trazem a regra da ANAC de desistência em 24 h (Res. 400, art. 11: compra
 
 ## Limites conhecidos
 
-- Uma caçada com volta faz cerca de 23 buscas no Google Flights (só ida, 12).
+- Uma caçada com volta faz de 23 a 45 buscas no Google Flights, conforme os
+  vizinhos e as conexões que precisar montar.
   Cache de 30 min por busca. Uso pesado pode levar o Google a pedir captcha.
 - Só a primeira tela de resultados do Google Flights é lida.
 - Preço em milhas não entra (Smiles, LATAM Pass, Azul não aparecem no Google).

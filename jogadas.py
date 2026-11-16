@@ -20,6 +20,14 @@ import gflights
 
 _CACHE = {}
 _VALIDADE_CACHE = 30 * 60
+
+# Custos de chão, estimativas editáveis na engrenagem (servidor guarda em dados/config.json).
+CHAO_PADRAO = {
+    "carro_km": 0.80,        # combustível + pedágio, por km rodado
+    "estacionamento_dia": 40,
+    "uber_km": 2.30,         # Uber/táxi intermunicipal, por km
+    "raio_km": 450,          # até onde procurar aeroporto vizinho (km de estrada)
+}
 CONEXAO_MIN = 3 * 60   # minutos entre os dois bilhetes da conexão montada
 CONEXAO_MAX = 10 * 60
 
@@ -272,11 +280,92 @@ def _jogar_fora_volta(rt, url, data_ida, data_volta_falsa, pax):
     return opcoes
 
 
+def _custo_chao(km, lado, ida, volta, pax, chao):
+    """Custo de ir e voltar do aeroporto vizinho. lado: 'origem' ou 'destino'.
+
+    Na origem dá para ir de carro (deixando no estacionamento) ou de Uber; no
+    destino só Uber/táxi. Uber leva até 4 pessoas por carro.
+    """
+    dias = (dt.date.fromisoformat(volta) - dt.date.fromisoformat(ida)).days if volta else 0
+    pessoas = pax[0] + pax[1]  # bebê de colo vai no colo
+    carros_uber = -(-pessoas // 4)
+    viagens = 2 if volta else 1
+    uber = km * chao["uber_km"] * viagens * carros_uber
+    def reais(x):
+        return f"R$ {x:.2f}".replace(".", ",")
+    escolhas = [("Uber/táxi", uber,
+                 f"{viagens}× {km} km de Uber/táxi a {reais(chao['uber_km'])}/km"
+                 + (f", {carros_uber} carros" if carros_uber > 1 else ""))]
+    if lado == "origem":
+        if volta:
+            n_dias = max(dias, 1)
+            carro = 2 * km * chao["carro_km"] + chao["estacionamento_dia"] * n_dias
+            como = (f"2× {km} km de carro a {reais(chao['carro_km'])}/km + estacionamento de "
+                    f"{n_dias} dia{'s' if n_dias > 1 else ''} a R$ {chao['estacionamento_dia']:.0f}")
+        else:
+            carro = 2 * km * chao["carro_km"]  # alguém leva e volta com o carro
+            como = f"{km} km para ir e {km} para o carro voltar, a {reais(chao['carro_km'])}/km"
+        escolhas.append(("Carro", carro, como))
+    meio, valor, como = min(escolhas, key=lambda e: e[1])
+    horas = km / 75
+    return {"meio": meio, "valor": round(valor), "como": como, "km": km,
+            "horas": f"{int(horas)}h{round((horas % 1) * 60):02d}",
+            "alternativas": [(m, round(v)) for m, v, _ in escolhas]}
+
+
+def _aplicar_chao(op, lado, cod, km, origem, destino, ida, volta, pax, chao):
+    """Soma o custo de estrada até o aeroporto vizinho e explica no detalhe."""
+    c = _custo_chao(km, lado, ida, volta, pax, chao)
+    perto = origem if lado == "origem" else destino
+    alt = " / ".join(f"{m} {_br(x)}" for m, x in c["alternativas"])
+    linhas = [
+        ("aviso", f"{'Sai de' if lado == 'origem' else 'Chega em'} {cod} ({aeroportos.cidade(cod)}), não {'de' if lado == 'origem' else 'em'} {perto}: cerca de {km} km de estrada, umas {c['horas']}."),
+        ("aviso", f"Estrada estimada: {_br(c['valor'])} de {c['meio'].lower()} ({c['como']}). Comparado: {alt}."),
+        ("info", "Distância estimada pela linha reta × 1,3. Custo por km e estacionamento se ajustam na engrenagem."),
+    ]
+    if lado == "origem":
+        linhas.append(("aviso", f"Saia de casa com folga: {c['horas']} de estrada mais 2 h de antecedência do voo."))
+        op["passos"].insert(0, f"Vá de {c['meio'].lower()} até {cod} ({aeroportos.cidade(cod)}), {km} km.")
+        if volta:
+            op["passos"].append(f"Na volta, desça em {cod} e siga de {c['meio'].lower()} até {aeroportos.cidade(origem)}.")
+    else:
+        op["passos"].append(f"Ao chegar em {cod} ({aeroportos.cidade(cod)}), siga de Uber/táxi até {aeroportos.cidade(destino)}, {km} km."
+                            + (" Na volta, faça o caminho inverso." if volta else ""))
+    op["detalhes"] = linhas + op["detalhes"]
+    op["passagem"] = op["preco"]
+    op["preco"] += c["valor"]
+    op["chao"] = c
+    op["tipo"] = "vizinho"
+    op["jogada"] = f"Aeroporto vizinho {cod}"
+    op["paradas"] = f"via {cod}" + (f" + {op['paradas']}" if op.get("paradas") else "")
+    return op
+
+
+def _opcoes_vizinho(lado, cod, km, lista, url, origem, destino, ida, volta, pax, chao):
+    opcoes = []
+    for v in lista[:2]:
+        detalhes = [("info", "A passagem em si é compra normal, sem violar regra nenhuma.")] \
+            + _detalhe_pax(pax) + [("info", _regra_24h(ida))]
+        passos = [
+            "Abra a busca no Google Flights pelo link desta opção.",
+            f"Escolha o voo: {_desc_voo(v)}." + (" Na tela seguinte, escolha a volta." if volta else ""),
+            "Prefira comprar direto no site da companhia.",
+        ]
+        op = {"preco": v["preco"], "paradas": "", "risco": "baixo",
+              "pernas": [_perna("Ida", v)], "detalhes": detalhes, "passos": passos,
+              "links": [{"rotulo": "Abrir", "url": url}]}
+        opcoes.append(_aplicar_chao(op, lado, cod, km, origem, destino, ida, volta, pax, chao))
+    return opcoes
+
+
 # ---------- caçada ----------
 
-def cacar(origem, destino, ida, volta=None, pax=gflights.PAX_PADRAO, ao_progresso=None):
+def cacar(origem, destino, ida, volta=None, pax=gflights.PAX_PADRAO, ao_progresso=None, chao=None):
     origem, destino = origem.upper().strip(), destino.upper().strip()
     pax = tuple(pax)
+    chao = {**CHAO_PADRAO, **(chao or {})}
+    viz_o = aeroportos.vizinhos(origem, chao["raio_km"])
+    viz_d = aeroportos.vizinhos(destino, chao["raio_km"])
     falsa = (dt.date.fromisoformat(ida) + dt.timedelta(days=7)).isoformat()
     hubs_ida = aeroportos.hubs_entre(origem, destino)
     hubs_volta = aeroportos.hubs_entre(destino, origem) if volta else []
@@ -292,6 +381,10 @@ def cacar(origem, destino, ida, volta=None, pax=gflights.PAX_PADRAO, ao_progress
     for h in hubs_ida:
         tarefas[("con_ida_1", h)] = ([(ida, origem, h)], False)
         tarefas[("con_ida_2", h)] = ([(ida, h, destino)], False)
+    for x, _ in viz_o:
+        tarefas[("viz_o", x)] = (([(ida, x, destino), (volta, destino, x)], True) if volta else ([(ida, x, destino)], False))
+    for x, _ in viz_d:
+        tarefas[("viz_d", x)] = (([(ida, origem, x), (volta, x, origem)], True) if volta else ([(ida, origem, x)], False))
     if volta:
         for x in aeroportos.alem_de(destino, origem):
             tarefas[("oculta_volta", x)] = ([(volta, destino, x)], False)
@@ -299,25 +392,51 @@ def cacar(origem, destino, ida, volta=None, pax=gflights.PAX_PADRAO, ao_progress
             tarefas[("con_volta_1", h)] = ([(volta, destino, h)], False)
             tarefas[("con_volta_2", h)] = ([(volta, h, origem)], False)
 
-    resultados, falhas, bloqueio = {}, [], None
-    total, feitos = len(tarefas), 0
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        futuros = {ex.submit(_buscar, tuple(t), rt, pax): k for k, (t, rt) in tarefas.items()}
-        for f, k in futuros.items():
-            try:
-                resultados[k] = f.result()
-            except gflights.Bloqueado as e:
-                bloqueio = str(e)
-            except Exception as e:  # rede, formato mudou
-                falhas.append(f"{k}: {e}")
-            feitos += 1
-            if ao_progresso:
-                ao_progresso(feitos, total)
+    resultados, falhas = {}, []
+    estado = {"total": 0, "feitos": 0, "bloqueio": None}
+
+    def executar(lote):
+        estado["total"] += len(lote)
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futuros = {ex.submit(_buscar, tuple(t), rt, pax): k for k, (t, rt) in lote.items()}
+            for f, k in futuros.items():
+                try:
+                    resultados[k] = f.result()
+                except gflights.Bloqueado as e:
+                    estado["bloqueio"] = str(e)
+                except Exception as e:  # rede, formato mudou
+                    falhas.append(f"{k}: {e}")
+                estado["feitos"] += 1
+                if ao_progresso:
+                    ao_progresso(estado["feitos"], estado["total"])
+
+    executar(tarefas)
+    bloqueio = estado["bloqueio"]
     if bloqueio and not resultados:
         raise gflights.Bloqueado(bloqueio)
 
     def res(k):
         return resultados.get(k, ([], None))
+
+    # 2ª rodada: vizinho sem voo montado pelo Google ganha conexão montada
+    # pelos mesmos hubs (o Google só monta conexão até uns meses à frente:
+    # IGU-BEL tem voo em dez/26 e mar/27, nada em jun/27).
+    vazios_o = [x for x, _ in viz_o if not res(("viz_o", x))[0]]
+    vazios_d = [x for x, _ in viz_d if not res(("viz_d", x))[0]]
+    lote2 = {}
+    for x in vazios_o:
+        for h in hubs_ida:
+            lote2[("vc_o_ida", x, h)] = ([(ida, x, h)], False)
+        for h in hubs_volta:
+            lote2[("vc_o_volta", x, h)] = ([(volta, h, x)], False)
+    for x in vazios_d:
+        for h in hubs_ida:
+            lote2[("vc_d_ida", x, h)] = ([(ida, h, x)], False)
+        for h in hubs_volta:
+            lote2[("vc_d_volta", x, h)] = ([(volta, x, h)], False)
+    if lote2:
+        executar(lote2)
+    total = estado["total"]
 
     def por_tipo(prefixo):
         return {k[1]: v for k, v in resultados.items() if isinstance(k, tuple) and k[0] == prefixo}
@@ -375,17 +494,48 @@ def cacar(origem, destino, ida, volta=None, pax=gflights.PAX_PADRAO, ao_progress
         for lado in lados_ida:
             if lado["tipo"] != "normal":
                 opcoes.append(_opcao([lado], _nome_jogada([lado]), ida, pax))
+    for lado, viz, prefixo in (("origem", viz_o, "viz_o"), ("destino", viz_d, "viz_d")):
+        for cod, km in viz:
+            lista, url = res((prefixo, cod))
+            if lista:
+                opcoes += _opcoes_vizinho(lado, cod, km, lista, url, origem, destino, ida, volta, pax, chao)
+                continue
+            # sem voo montado pelo Google: conexão montada saindo/chegando no vizinho
+            def lados_con(rotulo, hubs, primeiro, segundo):
+                lados = []
+                for h in hubs:
+                    (p, u1), (s, u2) = res(primeiro(h)), res(segundo(h))
+                    lados += [_lado_conexao(rotulo, par, u1, u2) for par in _achar_conexoes(h, p, s)]
+                return sorted(lados, key=lambda l: l["preco"])
+            if lado == "origem":
+                l_ida = lados_con("Ida", hubs_ida, lambda h: ("vc_o_ida", cod, h), lambda h: ("con_ida_2", h))
+                l_volta = lados_con("Volta", hubs_volta, lambda h: ("con_volta_1", h), lambda h: ("vc_o_volta", cod, h))
+            else:
+                l_ida = lados_con("Ida", hubs_ida, lambda h: ("con_ida_1", h), lambda h: ("vc_d_ida", cod, h))
+                l_volta = lados_con("Volta", hubs_volta, lambda h: ("vc_d_volta", cod, h), lambda h: ("con_volta_2", h))
+            if not l_ida or (volta and not l_volta):
+                continue
+            lados = [l_ida[0]] + ([l_volta[0]] if volta else [])
+            op = _opcao(lados, "Aeroporto vizinho", ida, pax,
+                        [("info", "Ida e volta em reservas separadas: o que acontecer numa não afeta a outra.")] if volta else [])
+            opcoes.append(_aplicar_chao(op, lado, cod, km, origem, destino, ida, volta, pax, chao))
     opcoes.sort(key=lambda o: o["preco"])
-    opcoes = opcoes[:25]
 
     # referência: a compra normal mais barata (mesma reserva ou trechos separados)
-    normais = [o["preco"] for o in opcoes if o["risco"] == "baixo"]
+    normais = [o["preco"] for o in opcoes if o["risco"] == "baixo" and o["tipo"] != "vizinho"]
     ref = min(normais) if normais else None
+    # aeroporto vizinho só aparece se, com a estrada, sair mais barato que a
+    # melhor opção do aeroporto pedido (normal ou, sem ela, qualquer jogada)
+    proprias = [o["preco"] for o in opcoes if o["tipo"] != "vizinho"]
+    ref_viz = ref or (min(proprias) if proprias else None)
+    opcoes = [o for o in opcoes if o["tipo"] != "vizinho" or ref_viz is None or o["preco"] < ref_viz]
     # jogada arriscada que não sai mais barata que a compra normal não serve
-    opcoes = [o for o in opcoes if o["risco"] == "baixo" or ref is None or o["preco"] < ref]
+    opcoes = [o for o in opcoes if o["risco"] == "baixo" or o["tipo"] == "vizinho"
+              or ref is None or o["preco"] < ref][:25]
     n_pessoas = sum(pax)
     for o in opcoes:
-        o["economia"] = (ref - o["preco"]) if ref and o["preco"] < ref else 0
+        base = ref_viz if o["tipo"] == "vizinho" else ref
+        o["economia"] = (base - o["preco"]) if base and o["preco"] < base else 0
         o["por_pessoa"] = round(o["preco"] / n_pessoas) if n_pessoas > 1 else None
         if any(p["voo"].get("estimado") for p in o["pernas"]):
             o["estimado"] = True
@@ -398,6 +548,7 @@ def cacar(origem, destino, ida, volta=None, pax=gflights.PAX_PADRAO, ao_progress
         "cidade_origem": aeroportos.cidade(origem), "cidade_destino": aeroportos.cidade(destino),
         "referencia": ref, "opcoes": opcoes, "buscas": total,
         "hubs": sorted(set(hubs_ida) | set(hubs_volta)),
+        "vizinhos": [c for c, _ in viz_o + viz_d],
         "direto_vazio": not idas,
         "falhas": len(falhas), "aviso_bloqueio": bloqueio,
         "quando": dt.datetime.now().isoformat(timespec="minutes"),

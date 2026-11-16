@@ -263,6 +263,7 @@ function mostrarResultado(r) {
   resumo.innerHTML = `<span><b>${n}</b> possibilidades para <b>${esc(r.origem)} → ${esc(r.destino)}</b>${p.reduce((a, b) => a + b, 0) > 1 ? `, ${esc(paxLongo(p))}` : ""}</span>
     ${r.referencia ? `<span>compra normal mais barata <b>${br(r.referencia)}</b></span>` : ""}
     ${r.direto_vazio && n ? `<span>o Google não monta esse voo; só conexão feita pelo Rasante</span>` : ""}
+    ${r.vizinhos && r.vizinhos.length && !r.opcoes.some((o) => o.tipo === "vizinho") ? `<span>vizinhos testados: ${esc(r.vizinhos.join(", "))}, nenhum compensou com a estrada</span>` : ""}
     <span>${r.buscas} buscas${r.falhas ? `, ${r.falhas} sem resposta` : ""} · ${esc(r.quando.slice(11))}</span>
     <button class="acao" id="vigiar">${ico("i-olho")} Vigiar esta rota</button>`;
   $("#vigiar").addEventListener("click", () => novaVigia(r));
@@ -282,7 +283,7 @@ function mostrarResultado(r) {
     const links = (o.links || []).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${ico("i-externo")} ${esc(l.rotulo)} no Google Flights</a>`).join("");
     return `<article class="linha${i === 0 ? " aberta" : ""}">
       <button class="linha-topo" aria-expanded="${i === 0}">
-        <span class="preco">${br(o.preco)}${o.economia ? `<span class="economia">${br(o.economia)} a menos</span>` : ""}${o.por_pessoa ? `<span class="por-pessoa">${br(o.por_pessoa)} por pessoa</span>` : ""}${o.estimado ? `<span class="estimado">estimado</span>` : ""}</span>
+        <span class="preco">${br(o.preco)}${o.economia ? `<span class="economia">${br(o.economia)} a menos</span>` : ""}${o.chao ? `<span class="por-pessoa">voo ${br(o.passagem)} + estrada ${br(o.chao.valor)}</span>` : ""}${o.por_pessoa ? `<span class="por-pessoa">${br(o.por_pessoa)} por pessoa</span>` : ""}${o.estimado ? `<span class="estimado">estimado</span>` : ""}</span>
         ${campo("Cia", cias)}
         ${campo("Horário", horas)}
         ${campo("Escala", escalas)}
@@ -406,6 +407,7 @@ async function carregarConfig() {
 }
 function abrirConfig() {
   const c = configAtual;
+  const ch = c.chao || { carro_km: 0.8, estacionamento_dia: 40, uber_km: 2.3, raio_km: 450 };
   modal("Configurações", `
     <p><b>Aviso no Telegram</b></p>
     <ol>
@@ -419,12 +421,30 @@ function abrirConfig() {
     <div class="fila"><button class="botao" id="tg-conectar" ${c.telegram_token_salvo ? "" : "disabled"}>Conectar</button><button class="botao" id="tg-testar" ${c.telegram_conectado ? "" : "disabled"}>Mandar aviso de teste</button></div>
     <label for="intervalo">Conferir as rotas vigiadas a cada (horas)</label>
     <input id="intervalo" type="number" min="1" max="48" value="${c.intervalo_horas || 6}">
-    <p>A vigia só roda com o Rasante aberto neste computador. O código do bot fica só em <code>dados/config.json</code>, neste PC.</p>`,
+    <p>A vigia só roda com o Rasante aberto neste computador. O código do bot fica só em <code>dados/config.json</code>, neste PC.</p>
+    <p><b>Aeroporto vizinho: custos de estrada (estimativas)</b></p>
+    <label for="ch-carro">Carro: combustível e pedágio por km (R$)</label>
+    <input id="ch-carro" type="number" min="0.1" step="0.05" value="${ch.carro_km}">
+    <label for="ch-estac">Estacionamento no aeroporto por dia (R$)</label>
+    <input id="ch-estac" type="number" min="0" step="5" value="${ch.estacionamento_dia}">
+    <label for="ch-uber">Uber ou táxi entre cidades por km (R$)</label>
+    <input id="ch-uber" type="number" min="0.1" step="0.1" value="${ch.uber_km}">
+    <label for="ch-raio">Procurar aeroporto até quantos km de estrada</label>
+    <input id="ch-raio" type="number" min="0" step="50" value="${ch.raio_km}">
+    <p>Distância de estrada estimada pela linha reta × 1,3. Raio 0 desliga o aeroporto vizinho.</p>`,
   [
     { rotulo: "Fechar" },
-    { rotulo: "Salvar intervalo", classe: "prim", fn: async () => {
-      configAtual = await api("POST", "/api/config", { intervalo_horas: Number($("#intervalo").value) });
-      toast("Intervalo salvo.");
+    { rotulo: "Salvar", classe: "prim", fn: async () => {
+      const campos = [["intervalo", "Intervalo"], ["ch-carro", "Carro por km"], ["ch-estac", "Estacionamento"], ["ch-uber", "Uber por km"], ["ch-raio", "Raio"]];
+      for (const [id, nome] of campos) {
+        if ($("#" + id).value === "" || isNaN(Number($("#" + id).value))) { toast(`${nome}: informe um número.`, true); return false; }
+      }
+      configAtual = await api("POST", "/api/config", {
+        intervalo_horas: Number($("#intervalo").value),
+        chao: { carro_km: Number($("#ch-carro").value), estacionamento_dia: Number($("#ch-estac").value),
+                uber_km: Number($("#ch-uber").value), raio_km: Number($("#ch-raio").value) },
+      });
+      toast("Configurações salvas. Valem para a próxima caçada.");
     } },
   ]);
   const acao = (id, fn) => $(id).addEventListener("click", async (e) => {
