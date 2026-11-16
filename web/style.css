@@ -204,6 +204,23 @@ svg { width: 18px; height: 18px; }
 .toast { background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 4px; font-size: 14px; max-width: 360px; }
 .toast.erro { border-left-color: var(--warn); }
 
+.por-pessoa { display: block; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.estimado { display: block; font-size: 11px; font-weight: 500; color: var(--warn); letter-spacing: 0; }
+.passo-pax { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.passo-pax:last-child { border-bottom: 0; }
+.passo-pax b { color: var(--ink); font-weight: 500; display: block; }
+.passo-pax small { color: var(--muted); }
+.passo-pax output { min-width: 2ch; text-align: center; font-size: 18px; color: var(--ink); }
+.passo-pax button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); font-size: 18px; line-height: 1; }
+.passo-pax button:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
+.passo-pax button[disabled] { opacity: .35; cursor: not-allowed; }
+
+@media (max-width: 1500px) and (min-width: 901px) {
+  .topo { gap: 18px; }
+  .busca, .busca input:not(.data-oculta), .data, .cacar { font-size: 16px; }
+  .marca { font-size: 26px; }
+}
+
 /* ---------- celular ---------- */
 @media (max-width: 900px) {
   .topo { flex-wrap: wrap; gap: 12px; padding: 12px 16px 0; }

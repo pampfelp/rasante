@@ -139,6 +139,64 @@ for (const c of [campos.origem, campos.destino]) {
 }
 $("#aeroportos").innerHTML = Object.entries(AEROPORTOS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
 
+/* ---------- pessoas ---------- */
+let pax = [1, 0, 0]; // adultos, crianças, bebês de colo
+const PAX_TIPOS = [
+  ["Adultos", "12 anos ou mais"],
+  ["Crianças", "2 a 11 anos"],
+  ["Bebês de colo", "até 2 anos, no colo de um adulto"],
+];
+function paxCurto(p) {
+  return [`${p[0]}a`, p[1] ? `${p[1]}c` : "", p[2] ? `${p[2]}b` : ""].filter(Boolean).join(" ");
+}
+function paxLongo(p) {
+  const s = (n, um, varios) => `${n} ${n > 1 ? varios : um}`;
+  const partes = [s(p[0], "adulto", "adultos")];
+  if (p[1]) partes.push(s(p[1], "criança", "crianças"));
+  if (p[2]) partes.push(s(p[2], "bebê de colo", "bebês de colo"));
+  return partes.length > 1 ? partes.slice(0, -1).join(", ") + " e " + partes.at(-1) : partes[0];
+}
+function mostrarPax() {
+  const b = $("#pax-btn");
+  b.textContent = paxCurto(pax);
+  b.title = paxLongo(pax);
+  b.setAttribute("aria-label", "Pessoas: " + paxLongo(pax));
+}
+function paxValido(p) {
+  return p[0] >= 1 && p[1] >= 0 && p[2] >= 0 && p[2] <= p[0] && p[0] + p[1] + p[2] <= 9;
+}
+$("#pax-btn").addEventListener("click", () => {
+  const rascunho = [...pax];
+  const desenhar = () => {
+    $("#modal-corpo").querySelectorAll(".passo-pax").forEach((linha, i) => {
+      linha.querySelector("output").textContent = rascunho[i];
+      const menos = [...rascunho]; menos[i]--;
+      const mais = [...rascunho]; mais[i]++;
+      linha.querySelector("[data-d='-1']").disabled = !paxValido(menos);
+      linha.querySelector("[data-d='1']").disabled = !paxValido(mais);
+    });
+  };
+  modal("Pessoas", PAX_TIPOS.map(([nome, idade], i) => `
+    <div class="passo-pax" data-i="${i}">
+      <span><b>${nome}</b><small>${idade}</small></span>
+      <button type="button" data-d="-1" aria-label="Menos ${nome.toLowerCase()}">−</button>
+      <output>${rascunho[i]}</output>
+      <button type="button" data-d="1" aria-label="Mais ${nome.toLowerCase()}">+</button>
+    </div>`).join("") + `<p>Até 9 pessoas. Cada bebê de colo precisa de um adulto. O preço mostrado é o total do grupo.</p>`,
+  [
+    { rotulo: "Cancelar" },
+    { rotulo: "Aplicar", classe: "prim", fn: () => { pax = rascunho; mostrarPax(); } },
+  ]);
+  $("#modal-corpo").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-d]");
+    if (!b || b.disabled) return;
+    const i = Number(b.closest(".passo-pax").dataset.i);
+    rascunho[i] += Number(b.dataset.d);
+    desenhar();
+  });
+  desenhar();
+});
+
 let ultimaCacada = null;
 let cacando = false;
 
@@ -146,7 +204,7 @@ async function cacar(pedido) {
   if (cacando) return;
   pedido = pedido || {
     origem: campos.origem.value, destino: campos.destino.value,
-    ida: campos.ida.value, volta: campos.volta.value || null,
+    ida: campos.ida.value, volta: campos.volta.value || null, passageiros: [...pax],
   };
   if (pedido.origem.length !== 3) return toast("Origem: use o código de 3 letras do aeroporto (ex.: BEL).", true);
   if (pedido.destino.length !== 3) return toast("Destino: use o código de 3 letras do aeroporto (ex.: GRU).", true);
@@ -156,7 +214,7 @@ async function cacar(pedido) {
   document.body.classList.add("cacando");
   $("#cacar").disabled = true;
   $("#resumo").hidden = true;
-  $("#lista").innerHTML = `<div class="estado">Caçando <b>${esc(pedido.origem)} → ${esc(pedido.destino)}</b>, ${dataCurta(pedido.ida)}${pedido.volta ? " a " + dataCurta(pedido.volta) : ", só ida"}: compra normal, trechos separados, escala oculta e ida e volta jogando fora a volta.<br><span id="prog-txt">Preparando as buscas...</span><div class="progresso"><i id="prog"></i></div></div>`;
+  $("#lista").innerHTML = `<div class="estado">Caçando <b>${esc(pedido.origem)} → ${esc(pedido.destino)}</b>, ${dataCurta(pedido.ida)}${pedido.volta ? " a " + dataCurta(pedido.volta) : ", só ida"}, ${esc(paxLongo(pedido.passageiros || [1, 0, 0]))}: compra normal, trechos separados, conexão montada, escala oculta e ida e volta jogando fora a volta.<br><span id="prog-txt">Preparando as buscas...</span><div class="progresso"><i id="prog"></i></div></div>`;
   try {
     const { id } = await api("POST", "/api/cacar", pedido);
     let estado;
@@ -201,13 +259,16 @@ function mostrarResultado(r) {
   const n = r.opcoes.length;
   const resumo = $("#resumo");
   resumo.hidden = false;
-  resumo.innerHTML = `<span><b>${n}</b> possibilidades para <b>${esc(r.origem)} → ${esc(r.destino)}</b></span>
+  const p = r.passageiros || [1, 0, 0];
+  resumo.innerHTML = `<span><b>${n}</b> possibilidades para <b>${esc(r.origem)} → ${esc(r.destino)}</b>${p.reduce((a, b) => a + b, 0) > 1 ? `, ${esc(paxLongo(p))}` : ""}</span>
     ${r.referencia ? `<span>compra normal mais barata <b>${br(r.referencia)}</b></span>` : ""}
+    ${r.direto_vazio && n ? `<span>o Google não monta esse voo; só conexão feita pelo Rasante</span>` : ""}
     <span>${r.buscas} buscas${r.falhas ? `, ${r.falhas} sem resposta` : ""} · ${esc(r.quando.slice(11))}</span>
     <button class="acao" id="vigiar">${ico("i-olho")} Vigiar esta rota</button>`;
   $("#vigiar").addEventListener("click", () => novaVigia(r));
   if (!n) {
-    $("#lista").innerHTML = `<div class="estado">Nenhum voo encontrado para essa rota e data. Confira os códigos dos aeroportos ou tente outra data.</div>`;
+    $("#lista").innerHTML = `<div class="estado">O Google Flights não mostrou voo de <b>${esc(r.origem)}</b> para <b>${esc(r.destino)}</b> em ${dataCurta(r.ida)}${r.hubs && r.hubs.length ? `, nem montando conexão em ${esc(r.hubs.join(" ou "))}` : ""}.<br>
+      Pode ser data longe demais (as companhias abrem a venda cerca de 330 dias antes), código de aeroporto errado ou rota sem voo nesse dia. Tente outra data ou um aeroporto próximo.</div>`;
     return;
   }
   $("#lista").innerHTML = r.opcoes.map((o, i) => {
@@ -218,18 +279,15 @@ function mostrarResultado(r) {
     const escalas = pernas.map((p) => p.desce_em ? `desce ${p.desce_em}` : (p.voo.escalas.length ? p.voo.escalas.join(", ") : "Direto"));
     const ocultos = o.detalhes.map(([nivel, txt]) => `<li class="${nivel}">${esc(txt)}</li>`).join("");
     const passos = o.passos.map((p) => `<li>${esc(p)}</li>`).join("");
-    const links = [
-      o.link && `<a href="${esc(o.link)}" target="_blank" rel="noopener">${ico("i-externo")} ${o.link_volta ? "Ida no" : "Abrir no"} Google Flights</a>`,
-      o.link_volta && `<a href="${esc(o.link_volta)}" target="_blank" rel="noopener">${ico("i-externo")} Volta no Google Flights</a>`,
-    ].filter(Boolean).join("");
+    const links = (o.links || []).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${ico("i-externo")} ${esc(l.rotulo)} no Google Flights</a>`).join("");
     return `<article class="linha${i === 0 ? " aberta" : ""}">
       <button class="linha-topo" aria-expanded="${i === 0}">
-        <span class="preco">${br(o.preco)}${o.economia ? `<span class="economia">${br(o.economia)} a menos</span>` : ""}</span>
+        <span class="preco">${br(o.preco)}${o.economia ? `<span class="economia">${br(o.economia)} a menos</span>` : ""}${o.por_pessoa ? `<span class="por-pessoa">${br(o.por_pessoa)} por pessoa</span>` : ""}${o.estimado ? `<span class="estimado">estimado</span>` : ""}</span>
         ${campo("Cia", cias)}
         ${campo("Horário", horas)}
         ${campo("Escala", escalas)}
         <span class="etiqueta">${esc(o.jogada)}</span>
-        <span class="direita"><span class="etiqueta">${esc(pernas.length > 1 ? "Ida e volta" : (ida.escalas.length ? ida.escalas.length + " escala" + (ida.escalas.length > 1 ? "s" : "") : "Direto"))}</span><svg class="seta"><use href="#i-seta"/></svg></span>
+        <span class="direita"><span class="etiqueta">${esc(pernas.some((p) => p.rotulo.startsWith("Volta")) || o.tipo === "normal" && r.volta ? "Ida e volta" : pernas.length > 1 ? "Conexão" : (ida.escalas.length ? ida.escalas.length + " escala" + (ida.escalas.length > 1 ? "s" : "") : "Direto"))}</span><svg class="seta"><use href="#i-seta"/></svg></span>
       </button>
       <div class="detalhe">
         <p class="pernas">${pernas.map(descPerna).join("<br>")}</p>
@@ -252,7 +310,7 @@ $("#lista").addEventListener("click", (e) => {
 
 function estadoVazio() {
   $("#lista").innerHTML = `<div class="estado">Digite a <b>origem</b>, o <b>destino</b> e as datas e clique em <b>Caçar</b>.<br>
-    O Rasante testa a compra normal, trechos separados, escala oculta e ida e volta jogando fora a volta,
+    O Rasante testa a compra normal, trechos separados, conexão montada, escala oculta e ida e volta jogando fora a volta,
     e lista tudo do mais barato para o mais caro, com os riscos e o passo a passo de cada jogada.<br>
     Sem data de volta, ele caça só a ida.</div>`;
 }
@@ -283,7 +341,7 @@ async function carregarVigias() {
       <button class="rota-txt" data-acao="cacar">${esc(v.origem)} - ${esc(v.destino)} | Meta ${br(v.meta)} |<br>${v.ultimo ? br(v.ultimo) + " (Último)" : "sem preço ainda"}</button>
       ${faisca(v.historico, v.meta)}
       <div class="acoes">
-        <span class="quando">${dataCurta(v.ida)}${v.volta ? " a " + dataCurta(v.volta) : ""}${v.ultima_conferencia ? " · visto " + esc(v.ultima_conferencia.slice(5, 16).replace("T", " ")) : ""}</span>
+        <span class="quando">${dataCurta(v.ida)}${v.volta ? " a " + dataCurta(v.volta) : ""} · ${paxCurto(v.passageiros || [1, 0, 0])}${v.ultima_conferencia ? " · visto " + esc(v.ultima_conferencia.slice(5, 16).replace("T", " ")) : ""}</span>
         <button class="icone-btn" data-acao="conferir" title="Conferir agora" aria-label="Conferir agora">${ico("i-atualizar")}</button>
         <button class="icone-btn" data-acao="remover" title="Parar de vigiar" aria-label="Parar de vigiar">${ico("i-fechar")}</button>
       </div>
@@ -298,7 +356,9 @@ $("#vigias").addEventListener("click", async (e) => {
   if (b.dataset.acao === "cacar") {
     campos.origem.value = v.origem; campos.destino.value = v.destino;
     campos.ida.value = v.ida; campos.volta.value = v.volta || "";
+    pax = v.passageiros || [1, 0, 0];
     mostrarDatas();
+    mostrarPax();
     cacar();
   } else if (b.dataset.acao === "conferir") {
     b.disabled = true;
@@ -327,7 +387,7 @@ function novaVigia(r) {
     { rotulo: "Vigiar", classe: "prim", fn: async () => {
       const meta = Number($("#meta").value);
       if (!meta || meta <= 0) { toast("Meta de preço: informe um valor em reais.", true); return false; }
-      await api("POST", "/api/vigias", { origem: r.origem, destino: r.destino, ida: r.ida, volta: r.volta, meta, ultimo: melhor });
+      await api("POST", "/api/vigias", { origem: r.origem, destino: r.destino, ida: r.ida, volta: r.volta, passageiros: r.passageiros || [1, 0, 0], meta, ultimo: melhor });
       await carregarVigias();
       toast("Rota vigiada.");
     } },
@@ -398,12 +458,14 @@ $("#aviso-tg").addEventListener("click", () => { if (!configAtual.telegram_conec
   if (p && p.ida >= hoje) {
     campos.origem.value = p.origem; campos.destino.value = p.destino;
     campos.ida.value = p.ida; campos.volta.value = p.volta || "";
+    if (Array.isArray(p.passageiros) && paxValido(p.passageiros)) pax = p.passageiros;
   } else {
     campos.ida.value = hojeMais(30); campos.volta.value = hojeMais(37);
   }
   mostrarDatas();
+  mostrarPax();
   const u = lembrar("ultima");
-  if (u && u.ida >= hoje) { ultimaCacada = u; mostrarResultado(u); } else estadoVazio();
+  if (u && u.ida >= hoje && Array.isArray(u.opcoes) && u.opcoes.every((o) => o.links)) { ultimaCacada = u; mostrarResultado(u); } else estadoVazio();
   carregarConfig();
   carregarVigias();
   setInterval(carregarVigias, 5 * 60 * 1000);

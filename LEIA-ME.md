@@ -22,8 +22,25 @@ A vigia só roda com o Rasante aberto neste computador.
 |---|---|---|
 | Compra normal | sempre | baixo |
 | Trechos separados | com volta: duas passagens só de ida | baixo |
+| Conexão montada | dois bilhetes só de ida por um hub no caminho (até 2 hubs), com 3 h a 10 h de espera | médio |
 | Escala oculta | voo para uma cidade além do destino, com escala no destino, mais barato que o direto | alto |
 | Ida e volta jogando fora a volta | sem volta: quando ida e volta sai mais barato que só ida | médio |
+
+Jogada arriscada que não sai mais barata que a compra normal não aparece.
+
+## Pessoas
+
+Adultos, crianças (2 a 11 anos) e bebês de colo, até 9. Os preços são o total
+do grupo, com o valor por pessoa embaixo. Em alguns trechos o Google não cota
+criança e devolve vazio (Cascavel, nov/2026); aí a criança é cotada como
+adulto e a opção sai marcada como "estimado".
+
+## Quando vem vazio
+
+O Google Flights às vezes não monta o voo (Cascavel → Belém em jun/2027 veio
+vazio, com Cascavel → Campinas e Campinas → Belém à venda). Por isso existe a
+conexão montada. Se nem ela achar, a tela explica as causas prováveis (data
+além de ~330 dias, código errado, rota sem voo no dia).
 
 Todas trazem a regra da ANAC de desistência em 24 h (Res. 400, art. 11: compra
 7 dias ou mais antes do voo).
@@ -44,7 +61,7 @@ Todas trazem a regra da ANAC de desistência em 24 h (Res. 400, art. 11: compra
 
 ## Limites conhecidos
 
-- Uma caçada com volta faz cerca de 19 buscas no Google Flights (só ida, 10).
+- Uma caçada com volta faz cerca de 23 buscas no Google Flights (só ida, 12).
   Cache de 30 min por busca. Uso pesado pode levar o Google a pedir captcha.
 - Só a primeira tela de resultados do Google Flights é lida.
 - Preço em milhas não entra (Smiles, LATAM Pass, Azul não aparecem no Google).

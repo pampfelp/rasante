@@ -93,7 +93,7 @@ def conferir_vigia(vid):
         v = next((x for x in vigias if x["id"] == vid), None)
     if not v:
         raise KeyError(vid)
-    r = jogadas.cacar(v["origem"], v["destino"], v["ida"], v.get("volta"))
+    r = jogadas.cacar(v["origem"], v["destino"], v["ida"], v.get("volta"), _pax(v.get("passageiros")))
     opcoes = r["opcoes"]
     if not opcoes:
         return v
@@ -122,8 +122,9 @@ def conferir_vigia(vid):
         ]
         if seguro and seguro is not melhor:
             linhas.append(f"Compra normal mais barata: {_br(seguro['preco'])}.")
-        linhas.append(f"Ida {v['ida']}" + (f", volta {v['volta']}" if v.get("volta") else ""))
-        linhas.append(melhor.get("link", ""))
+        linhas.append(f"Ida {v['ida']}" + (f", volta {v['volta']}" if v.get("volta") else "")
+                      + f", {r['passageiros_txt']}.")
+        linhas += [l["url"] for l in melhor.get("links", [])[:2]]
         try:
             enviar_telegram("\n".join(linhas))
         except Exception as e:
@@ -157,7 +158,7 @@ def laco_vigia():
 
 # ---------- caçada em segundo plano ----------
 
-def iniciar_cacada(origem, destino, ida, volta):
+def iniciar_cacada(origem, destino, ida, volta, pax):
     cid = uuid.uuid4().hex[:10]
     CACADAS[cid] = {"feitos": 0, "total": 0, "resultado": None, "erro": None}
 
@@ -166,7 +167,7 @@ def iniciar_cacada(origem, destino, ida, volta):
 
     def rodar():
         try:
-            CACADAS[cid]["resultado"] = jogadas.cacar(origem, destino, ida, volta, progresso)
+            CACADAS[cid]["resultado"] = jogadas.cacar(origem, destino, ida, volta, pax, progresso)
         except gflights.Bloqueado as e:
             CACADAS[cid]["erro"] = str(e)
         except Exception as e:
@@ -183,6 +184,23 @@ def _codigo(x):
     if len(x) != 3 or not x.isalpha():
         raise ValueError("Use o código de 3 letras do aeroporto (ex.: BEL).")
     return x
+
+
+def _pax(x):
+    """[adultos, crianças, bebês de colo]."""
+    try:
+        a, c, b = (int(n) for n in (x or [1, 0, 0]))
+    except (TypeError, ValueError):
+        raise ValueError("Pessoas: informe adultos, crianças e bebês.")
+    if a < 1:
+        raise ValueError("Pessoas: precisa de pelo menos 1 adulto.")
+    if c < 0 or b < 0:
+        raise ValueError("Pessoas: número negativo.")
+    if b > a:
+        raise ValueError("Pessoas: cada bebê de colo precisa de um adulto.")
+    if a + c + b > 9:
+        raise ValueError("Pessoas: no máximo 9 por caçada (limite do Google Flights).")
+    return (a, c, b)
 
 
 def _data(x, obrigatoria=True):
@@ -254,7 +272,7 @@ class Rasante(BaseHTTPRequestHandler):
                     raise ValueError("A volta é antes da ida.")
                 if ida < dt.date.today().isoformat():
                     raise ValueError("A data de ida já passou.")
-                return self._json(200, {"id": iniciar_cacada(origem, destino, ida, volta)})
+                return self._json(200, {"id": iniciar_cacada(origem, destino, ida, volta, _pax(b.get("passageiros")))})
             if u.path == "/api/vigias":
                 meta = int(b.get("meta") or 0)
                 if meta <= 0:
@@ -262,6 +280,7 @@ class Rasante(BaseHTTPRequestHandler):
                 v = {"id": uuid.uuid4().hex[:8], "origem": _codigo(b.get("origem")),
                      "destino": _codigo(b.get("destino")), "ida": _data(b.get("ida")),
                      "volta": _data(b.get("volta"), False), "meta": meta,
+                     "passageiros": list(_pax(b.get("passageiros"))),
                      "ultimo": b.get("ultimo"), "historico": [], "criada": dt.datetime.now().isoformat(timespec="minutes")}
                 if v["ultimo"]:
                     v["historico"].append({"quando": v["criada"], "preco": v["ultimo"]})

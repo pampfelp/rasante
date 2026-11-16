@@ -28,6 +28,15 @@ AEROPORTOS = {
     "NVT": ("Navegantes", -26.88, -48.65, "BR"), "FLN": ("Florianópolis", -27.67, -48.55, "BR"),
     "POA": ("Porto Alegre", -29.99, -51.17, "BR"), "PVH": ("Porto Velho", -8.71, -63.90, "BR"),
     "RBR": ("Rio Branco", -9.87, -67.89, "BR"), "BVB": ("Boa Vista", 2.85, -60.69, "BR"),
+    "CAC": ("Cascavel", -24.99, -53.50, "BR"), "XAP": ("Chapecó", -27.13, -52.66, "BR"),
+    "CXJ": ("Caxias do Sul", -29.20, -51.19, "BR"), "PFB": ("Passo Fundo", -28.24, -52.33, "BR"),
+    "JDO": ("Juazeiro do Norte", -7.22, -39.27, "BR"), "PNZ": ("Petrolina", -9.36, -40.57, "BR"),
+    "MOC": ("Montes Claros", -16.71, -43.82, "BR"), "IPN": ("Ipatinga", -19.47, -42.49, "BR"),
+    "SJP": ("São José do Rio Preto", -20.82, -49.41, "BR"), "PPB": ("Presidente Prudente", -22.18, -51.42, "BR"),
+    "UBA": ("Uberaba", -19.76, -47.97, "BR"), "CPV": ("Campina Grande", -7.27, -35.90, "BR"),
+    "JJD": ("Jericoacoara", -2.91, -40.36, "BR"), "FEN": ("Fernando de Noronha", -3.85, -32.42, "BR"),
+    "ATM": ("Altamira", -3.25, -52.25, "BR"), "CKS": ("Parauapebas", -6.12, -50.00, "BR"),
+    "ROO": ("Rondonópolis", -16.59, -54.72, "BR"), "TBT": ("Tabatinga", -4.25, -69.94, "BR"),
     "EZE": ("Buenos Aires", -34.82, -58.54, "AR"), "AEP": ("Buenos Aires", -34.56, -58.42, "AR"),
     "MVD": ("Montevidéu", -34.84, -56.03, "UY"), "ASU": ("Assunção", -25.24, -57.52, "PY"),
     "SCL": ("Santiago", -33.39, -70.79, "CL"), "LIM": ("Lima", -12.02, -77.11, "PE"),
@@ -70,7 +79,40 @@ def _rumo(a, b):
     return math.degrees(math.atan2(y, x)) % 360
 
 
-def alem_de(origem, destino, quantos=8):
+HUBS_CONEXAO = ["GRU", "CGH", "VCP", "BSB", "GIG", "SDU", "CNF", "REC", "FOR", "SSA", "POA", "CWB"]
+
+
+def hubs_entre(origem, destino, quantos=2):
+    """Hubs no caminho, para montar a conexão com dois bilhetes separados.
+
+    Critério: o desvio (origem-hub + hub-destino) fica até 35% maior que o
+    voo direto.
+    """
+    a, b = AEROPORTOS.get(origem), AEROPORTOS.get(destino)
+    if not a or not b:
+        return [h for h in ("GRU", "BSB") if h not in (origem, destino)][:quantos]
+    d_ab = _dist(a, b)
+    cand = []
+    for h in HUBS_CONEXAO:
+        if mesma_cidade(h, origem) or mesma_cidade(h, destino):
+            continue
+        x = AEROPORTOS[h]
+        razao = (_dist(a, x) + _dist(x, b)) / d_ab
+        if razao < 1.35:
+            cand.append((razao, h))
+    cand.sort()
+    escolhidos, cidades = [], []
+    for _, h in cand:
+        if any(mesma_cidade(h, c) for c in cidades):
+            continue  # GRU e CGH contam como um hub só
+        escolhidos.append(h)
+        cidades.append(h)
+        if len(escolhidos) == quantos:
+            break
+    return escolhidos
+
+
+def alem_de(origem, destino, quantos=6):
     """Destinos que ficam depois de `destino`, vindo de `origem`.
 
     Um voo origem -> X muitas vezes faz escala em `destino`; é ali que a

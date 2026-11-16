@@ -42,20 +42,30 @@ def _int(num, valor):
     return _varint(num << 3) + _varint(valor)
 
 
-def montar_tfs(trechos, ida_e_volta):
-    """trechos: lista de (data AAAA-MM-DD, origem, destino)."""
+PAX_PADRAO = (1, 0, 0)  # adultos, crianças (2 a 11 anos), bebês de colo
+
+
+def montar_tfs(trechos, ida_e_volta, pax=PAX_PADRAO):
+    """trechos: lista de (data AAAA-MM-DD, origem, destino).
+
+    pax: (adultos, crianças, bebês de colo). Cada passageiro é uma entrada do
+    campo 8 (1 adulto, 2 criança, 4 bebê de colo). O preço que volta é o
+    total do grupo (conferido em 2026-11-16: 1 adulto R$ 822, 2 adultos R$ 1.643).
+    """
+    adultos, criancas, bebes = pax
     msg = b""
     for data, origem, destino in trechos:
         t = _str(2, data) + _str(13, _str(2, origem)) + _str(14, _str(2, destino))
         msg += _str(3, t)
-    msg += _int(8, 1)                       # 1 adulto
+    for tipo, n in ((1, adultos), (2, criancas), (4, bebes)):
+        msg += _int(8, tipo) * n
     msg += _int(9, 1)                       # classe econômica
     msg += _int(19, 1 if ida_e_volta else 2)
     return base64.urlsafe_b64encode(msg).decode().rstrip("=")
 
 
-def url_busca(trechos, ida_e_volta):
-    q = {"tfs": montar_tfs(trechos, ida_e_volta), "hl": "pt-BR", "curr": "BRL", "gl": "BR"}
+def url_busca(trechos, ida_e_volta, pax=PAX_PADRAO):
+    q = {"tfs": montar_tfs(trechos, ida_e_volta, pax), "hl": "pt-BR", "curr": "BRL", "gl": "BR"}
     return URL_BUSCA + "?" + urllib.parse.urlencode(q)
 
 
@@ -132,13 +142,15 @@ def _voo(item):
     }
 
 
-def buscar(trechos, ida_e_volta=False):
+def buscar(trechos, ida_e_volta=False, pax=PAX_PADRAO):
     """Devolve a lista de voos da primeira tela do Google Flights.
 
     Só ida: preço da passagem só de ida.
     Ida e volta: cada item é um voo de ida com o menor preço total de ida e volta.
+    Lista vazia quando o Google não tem itinerário montado (ex.: CAC-BEL em
+    jun/2027, mesmo com CAC-GRU e GRU-BEL à venda).
     """
-    url = url_busca(trechos, ida_e_volta)
+    url = url_busca(trechos, ida_e_volta, pax)
     data = _bloco_ds1(_baixar(url))
     voos = []
     if data:
