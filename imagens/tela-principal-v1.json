@@ -1,0 +1,10 @@
+{
+  "imagem": "tela-principal-v1.jpg",
+  "data": "2026-11-16",
+  "rota": "chat",
+  "conversa": "https://gemini.google.com/u/0/app/e050f7f40573ce5e",
+  "modelo": "3.5 Flash-Lite (o 4 Argon foi selecionado, mas o envio saiu no Flash-Lite)",
+  "ferramenta": "Criar imagem, formato 16:9",
+  "tamanho": "1376x768",
+  "prompt": "Gere uma imagem: tela de computador de um app web chamado Rasante, um caçador pessoal de passagens aéreas que encontra brechas de preço. Caráter: painel de caçador, preciso e um pouco malandro, nada de site de agência de viagem genérico. Fundo grafite escuro, verde vivo como cor de destaque para o preço mais barato, laranja para avisos de risco. Assinaturas visuais: uma linha fina de rota que atravessa a tela em voo rasante, quase encostando no chão, e todos os preços em fonte monoespaçada. Hierarquia: no topo, uma busca compacta numa linha só com Origem BEL, Destino GRU, Ida 15 dez, Volta 22 dez e o botão Caçar. Abaixo, a lista de possibilidades ordenada da mais barata para a mais cara, cada linha com o preço grande à esquerda, companhia e horários, e uma etiqueta com o tipo de jogada: Escala oculta, Ida e volta jogando fora a volta, Trechos separados, Direto. A mais barata em destaque. Uma das linhas está expandida e mostra dois blocos: Detalhes ocultos, com os riscos em laranja (só bagagem de mão, não usar milhas, pode ser banido), e Procedimento, com passos numerados. Na lateral direita, uma coluna estreita Rotas vigiadas, com preço-alvo, último preço e um pequeno gráfico de linha, e a indicação de aviso pelo Telegram. Ícones de traço fino, sem emoji, sem fotos de avião, sem pessoas. Todo o texto em português do Brasil."
+}
